@@ -1,0 +1,9 @@
+{
+  "main": "lib/terminal",
+  "activationEvents": {
+    "terminal:create-split-down": ".editor"
+  },
+  "dependencies": {
+    "pty.js": "0.2.2"
+  }
+}

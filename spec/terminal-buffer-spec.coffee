@@ -5,7 +5,7 @@ $ = require 'jquery'
 {$$} = require 'space-pen'
 fs = require 'fs'
 
-fdescribe 'Terminal Buffer', ->
+describe 'Terminal Buffer', ->
   [buffer, view] = []
 
   beforeEach ->

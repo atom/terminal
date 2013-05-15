@@ -1,3 +1,0 @@
-'main': 'lib/terminal'
-'activationEvents':
-  'terminal:create-split-down': '.editor'

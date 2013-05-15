@@ -4,7 +4,8 @@ TerminalBuffer = require 'terminal/lib/terminal-buffer'
 _ = require 'underscore'
 $ = require 'jquery'
 fs = require 'fs'
-ChildProcess = require 'child-process'
+ChildProcess = require 'child_process'
+pty = require 'pty.js'
 
 module.exports =
 class TerminalView extends ScrollView
@@ -12,7 +13,7 @@ class TerminalView extends ScrollView
   @content: (params) ->
     @div class: "terminal", tabindex: -1, =>
       @div class: "content", outlet: "content", =>
-        @pre
+        @div
       @input class: 'hidden-input', outlet: 'hiddenInput'
 
   initialize: ->
@@ -64,21 +65,30 @@ class TerminalView extends ScrollView
     @command "terminal:reload", => @reload()
 
   login: ->
-    process = ChildProcess.exec "/bin/bash", interactive: true, cwd: (project.getPath() || "~"), stdout: (data) =>
-      return if process != @process
-      @readData = true if !@readData
+    @process?.kill()
+
+    @process = pty.spawn('bash', [], {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 30,
+      cwd: project.getPath() ? fs.realPathSync("~")
+    });
+
+    @process.on 'data', (data) =>
+      console.log "STDOUT", data
+      @readData = true
       @output(data)
-    @process = process
-    @process.done () =>
+
+    @process.on 'exit', =>
       return if process != @process
       @exited = true
       @write = () -> false
-    @write = @process.write
+
     @exited = false
     @updateTerminalSize()
 
   logout: ->
-    @write?("", true)
+    @process.kill()
     @process = null
 
   reload: ->
@@ -101,7 +111,7 @@ class TerminalView extends ScrollView
 
   input: (data) ->
     return if @exited
-    @write?(data, false)
+    @process.stdin.write(data)
 
   output: (data) ->
     if data.length > 0
@@ -112,7 +122,7 @@ class TerminalView extends ScrollView
       @setTerminalSize()
 
   lastLine: () ->
-    $(@content.find("pre").last().get(0))
+    $(@content.find("div").last().get(0))
 
   update: (ignoreTimer=false) ->
     @setTitle(@buffer.title)
@@ -138,7 +148,7 @@ class TerminalView extends ScrollView
         @cursorLine = @buffer.cursor.y
 
   updateTerminalSize: () ->
-    tester = $("<pre><span class='character'>a</span></pre>")
+    tester = $("<div><span class='character'>a</span></div>")
     @content.append(tester)
     charWidth = parseInt(tester.find("span").css("width"))
     lineHeight = parseInt(tester.css("height"))
@@ -160,12 +170,12 @@ class TerminalView extends ScrollView
     "terminal:foo"
 
   scrollToCursor: () ->
-    cursor = @content.find("pre span .cursor").parent().position()
+    cursor = @content.find("div span .cursor").parent().position()
     if cursor? then @scrollTop(cursor.top)
 
   setTerminalSize: () ->
     return if !@terminalSize? || @exited
-    @process?.winsize(@terminalSize[0], @terminalSize[1])
+    @process.resize(@terminalSize[0], @terminalSize[1])
 
   characterColor: (char, color, bgcolor) ->
     if color >= 16 then char.css(color: "##{TerminalBuffer.color(color)}")
@@ -174,16 +184,16 @@ class TerminalView extends ScrollView
     else if bgcolor >= 0 then char.addClass("background-#{bgcolor}")
 
   insertLine: (line) ->
-    l = @content.find("pre.line-#{line.number}")
+    l = @content.find("div.line-#{line.number}")
     if !_.contains(@buffer.lines, line)
       l.remove() if line.number >= @buffer.numLines()
       return null
     else if !l.size()
-      l = $("<pre>").addClass("line-#{line.number}").attr("line-number", line.number)
+      l = $("<div>").addClass("line-#{line.number}").attr("line-number", line.number)
       if line.number < 1
         @content.prepend(l)
       else
-        lines = _.sortBy(@content.find("pre"), ((i)-> i.lineNumber ?= parseInt($(i).attr("line-number"))))
+        lines = _.sortBy(@content.find("div"), ((i)-> i.lineNumber ?= parseInt($(i).attr("line-number"))))
         lines.reverse()
         n = 0
         for li in lines
