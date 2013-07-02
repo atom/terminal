@@ -1,0 +1,113 @@
+.terminal {
+  background-color: #fff;
+  padding: 5px;
+  overflow-y: scroll;
+
+  pre.line {
+    border: none;
+    background: none;
+    margin: 0px;
+    padding: 0px;
+
+    display: block;
+    line-height: 1.4em;
+    height: 1.4em;
+    clear: both;
+
+    span.character {
+      display: block;
+      width: 0.6em;
+      height: 1.4em;
+      padding: 0px;
+      margin: 0px;
+      text-align: center;
+      float: left;
+      position: relative;
+    }
+  }
+
+  .cursor {
+    display: block;
+    position: absolute;
+    top: 0; left: 0;
+    bottom: 0; right: 0;
+    width: 0.8em;
+    height: 1.4em;
+    background-color: #000;
+    opacity: 0.35;
+    z-index: 2;
+  }
+
+  input.hidden-input {
+    position: absolute;
+    z-index: -1;
+    top: 0;
+    left: 0;
+    opacity: 0;
+  }
+
+  .bold {
+    width: 0.6em;
+    font-weight: bold;
+  }
+
+  .italic {
+    font-style: italic;
+  }
+
+  .underlined {
+    text-decoration: underline;
+  }
+
+
+  .color-0 {
+    color: #000;
+  }
+  .color-1 {
+    color: rgb(194, 54, 33);
+  }
+  .color-2 {
+    color: rgb(37, 188, 36);
+  }
+  .color-3 {
+    color: rgb(173, 173, 39);
+  }
+  .color-4 {
+    color: rgb(73, 46, 225);
+  }
+  .color-5 {
+    color: rgb(211, 56, 211);
+  }
+  .color-6 {
+    color: rgb(51, 187, 200);
+  }
+  .color-7 {
+    color: rgb(203, 204, 205);
+  }
+
+  .background-0 {
+    background-color: #000;
+  }
+  .background-1 {
+    background-color: rgb(194, 54, 33);
+  }
+  .background-2 {
+    background-color: rgb(37, 188, 36);
+  }
+  .background-3 {
+    background-color: rgb(173, 173, 39);
+  }
+  .background-4 {
+    background-color: rgb(73, 46, 225);
+  }
+  .background-5 {
+    background-color: rgb(211, 56, 211);
+  }
+  .background-6 {
+    background-color: rgb(51, 187, 200);
+  }
+  .background-7 {
+    background-color: rgb(203, 204, 205);
+  }
+
+}

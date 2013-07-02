@@ -1,143 +1,108 @@
+TerminalView = require '../lib/terminal-view'
+TerminalBuffer = require '../lib/terminal-buffer'
 RootView = require 'root-view'
-TerminalView  = require 'terminal/lib/terminal-view'
-TerminalBuffer  = require 'terminal/lib/terminal-buffer'
+EventEmitter = require 'event-emitter'
 _ = require 'underscore'
-$ = require 'jquery'
-{$$} = require 'space-pen'
-fs = require 'fs'
 
-fdescribe 'Terminal', ->
-  [terminalView] = []
+describe "Terminal view", ->
+  [view, session] = []
+
+  makeChars = (chars...) ->
+    c = []
+    for char in chars
+      c.push({char: char})
+    c
+  afterUpdate = (cb) ->
+    waitsFor "view update", (done) ->
+      view.one 'view-updated', ->
+        cb?()
+        done()
 
   beforeEach ->
     window.rootView = new RootView
-    rootView.open('sample.js')
-    rootView.enableKeymap()
-    terminalView = new TerminalView
-    terminalView.updateDelay = 0
-    rootView.getActivePane().addItem(terminalView)
-    rootView.getActivePane().showItem(terminalView)
+    atom.activatePackage 'terminal'
+    session = {}
+    _.extend session, EventEmitter
+    view = new TerminalView(session)
 
-  afterEach ->
-    rootView.deactivate()
+  describe "update event", ->
+    it "adds a new line", ->
+      session.trigger 'update', {lineNumber:1, chars:makeChars("a")}
+      afterUpdate ->
+        expect(view.find(".line").size()).toBe(1)
+        expect(view.find(".line span").text()).toBe("a")
 
-  describe "login", ->
-    it "opens a terminal session", ->
-      terminalView.login()
-      waitsFor ->
-        terminalView.readData == true
-      runs ->
-        terminalView.input("echo 'hello, world' && exit 0\n")
-        waitsFor ->
-          terminalView.exited == true
-        runs ->
-          expect($(terminalView.content.find("pre.line-1")).text()).toBe("hello, world")
-          expect(terminalView.write()).toBeFalsy()
+    it "updates the content of an existing line", ->
+      session.trigger 'update', {lineNumber:1, chars:makeChars("a")}
+      session.trigger 'update', {lineNumber:1, chars:makeChars("b")}
+      afterUpdate ->
+        expect(view.find(".line").size()).toBe(1)
+        expect(view.find(".line span").text()).toBe("b")
 
-    it "exits the terminal session", ->
-      terminalView.login()
-      spyOn(terminalView, "logout").andCallThrough()
-      terminalView.detach()
-      waitsFor ->
-        terminalView.exited == true
-      runs ->
-        expect(terminalView.logout).toHaveBeenCalled()
+  describe "color", ->
+    it "sets the text color", ->
+      chars = makeChars("a")
+      chars[0].color = 1
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("color-1")).toBe(true)
 
-  describe "terminal view output", ->
-    it "is added to the buffer", ->
-      terminalView.output("foo\nbar")
-      terminalView.output(" baz")
-      expect(terminalView.content.find("pre").size()).toBe(2)
+    it "sets a higher color", ->
+      chars = makeChars("a")
+      chars[0].color = 21
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").css("color")).toBe('rgb(0, 0, 255)')
 
-  fdescribe "when a line in the buffer is dirty", ->
-    it "updates the line item", ->
-      terminalView.output("a")
-      expect(terminalView.content.find("pre").text()).toBe("a")
-    it "creates each character", ->
-      terminalView.output("ab")
-      expect(terminalView.content.find("pre").first().find("span.character").size()).toBe(3)
-    it "removes the line if it is not in the buffer anymore", ->
-      terminalView.output("a\nb")
-      terminalView.output(TerminalBuffer.escapeSequence("M"))
-      expect(terminalView.buffer.numLines()).toBe(1)
-      expect(terminalView.content.find("pre").size()).toBe(1)
-    it "inserts the line at the right position", ->
-      b = terminalView.buffer
-      b.input("a\nb\nc\nd\ne")
-      b.renderedAll()
-      b.dirtyLines = [b.getLine(2), b.getLine(4)]
-      terminalView.update()
-      b.dirtyLines = [b.getLine(1), b.getLine(0), b.getLine(3)]
-      terminalView.update()
-      expect(terminalView.content.find("pre").size()).toBe(5)
-      expect(terminalView.content.find("pre").text()).toBe("abcde")
+  describe "background-color", ->
+    it "has no background color by default", ->
+      session.trigger 'update', {lineNumber:1, chars:makeChars("a")}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("background-0")).toBe(false)
 
-    describe "color", ->
-      it "sets the text color", ->
-        terminalView.output(TerminalBuffer.escapeSequence("31m"))
-        terminalView.output("a")
-        expect(terminalView.content.find("pre span").hasClass("color-1")).toBe(true)
-      it "sets a higher color", ->
-        terminalView.output(TerminalBuffer.escapeSequence("38;5;21m"))
-        terminalView.output("a")
-        expect(terminalView.content.find("pre span").css("color")).toBe('rgb(0, 0, 255)')
-    describe "background-color", ->
-      it "has no background color by default", ->
-        terminalView.output("a")
-        expect(terminalView.content.find("pre span").hasClass("background-0")).toBe(false)
-      it "sets the background color", ->
-        terminalView.output(TerminalBuffer.escapeSequence("41m"))
-        terminalView.output("a")
-        expect(terminalView.content.find("pre span").hasClass("background-1")).toBe(true)
-      it "sets a higher color", ->
-        terminalView.output(TerminalBuffer.escapeSequence("48;5;21m"))
-        terminalView.output("a")
-        expect(terminalView.content.find("pre span").css("background-color")).toBe('rgb(0, 0, 255)')
-    describe "reversed colors", ->
-      it "swaps the foreground and background colors", ->
-        terminalView.output(TerminalBuffer.escapeSequence("7m"))
-        terminalView.output(TerminalBuffer.escapeSequence("41m"))
-        terminalView.output(TerminalBuffer.escapeSequence("34m"))
-        terminalView.output("a")
-        expect(terminalView.content.find("pre span").hasClass("color-1")).toBe(true)
-        expect(terminalView.content.find("pre span").hasClass("background-4")).toBe(true)
+    it "sets the background color", ->
+      chars = makeChars("a")
+      chars[0].backgroundColor = 1
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("background-1")).toBe(true)
 
-    describe "text style", ->
-      it "sets the style to bold", ->
-        terminalView.output("#{TerminalBuffer.escapeSequence("1m")}a")
-        expect(terminalView.content.find("pre span").hasClass("bold")).toBe(true)
-      it "sets the style to italic", ->
-        terminalView.output("#{TerminalBuffer.escapeSequence("3m")}a")
-        expect(terminalView.content.find("pre span").hasClass("italic")).toBe(true)
-      it "sets the style to underlined", ->
-        terminalView.output("#{TerminalBuffer.escapeSequence("4m")}a")
-        expect(terminalView.content.find("pre span").hasClass("underlined")).toBe(true)
+    it "sets a higher color", ->
+      chars = makeChars("a")
+      chars[0].backgroundColor = 21
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").css("background-color")).toBe('rgb(0, 0, 255)')
 
-  describe "when the alternate buffer is used", ->
-    it "clears the display on enable", ->
-      terminalView.content.append($("<span class='to-be-deleted'>a</span>"))
-      terminalView.buffer.enableAlternateBuffer()
-      terminalView.update()
-      expect(terminalView.content.find('.to-be-deleted').length).toBe(0)
-    it "clears the display on disable", ->
-      terminalView.content.append($("<span class='to-be-deleted'>a</span>"))
-      terminalView.buffer.enableAlternateBuffer()
-      terminalView.update()
-      expect(terminalView.content.find('.to-be-deleted').length).toBe(0)
+  describe "reversed colors", ->
+    it "swaps the foreground and background colors", ->
+      chars = makeChars("a")
+      chars[0].color = 4
+      chars[0].backgroundColor = 1
+      chars[0].reversed = true
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("color-1")).toBe(true)
+        expect(view.renderedLines.find("pre span").hasClass("background-4")).toBe(true)
 
-  describe "when the cursor position changes", ->
-    it "scrolls to the cursor", ->
-      spyOn(terminalView, 'scrollToCursor')
-      terminalView.output("a\n")
-      expect(terminalView.scrollToCursor).toHaveBeenCalled()
+  describe "text style", ->
+    it "sets the style to bold", ->
+      chars = makeChars("a")
+      chars[0].bold = true
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("bold")).toBe(true)
 
-  describe "when a control key combo is pressed", ->
-    it "sends the control event to the process", ->
-      spyOn(terminalView, "input")
-      rootView.trigger("terminal:ctrl-c")
-      expect(terminalView.input).toHaveBeenCalledWith(String.fromCharCode(3))
+    it "sets the style to italic", ->
+      chars = makeChars("a")
+      chars[0].italic = true
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("italic")).toBe(true)
 
-  describe "when the terminal view size changes", ->
-    it "resizes the terminal buffer", ->
-      terminalView.size = [5, 10]
-      terminalView.setTerminalSize()
+    it "sets the style to underlined", ->
+      chars = makeChars("a")
+      chars[0].underlined = true
+      session.trigger 'update', {lineNumber:1, chars:chars}
+      afterUpdate ->
+        expect(view.renderedLines.find("pre span").hasClass("underlined")).toBe(true)

@@ -1,15 +1,17 @@
-TerminalView  = require 'terminal/lib/terminal-view'
-_ = require 'underscore'
+Project = require 'project'
+TerminalSession = require './terminal-session'
 
 module.exports =
-  activate: (state) ->
-    rootView.command 'terminal:create-split-down', =>
-      activePane = rootView.getActivePane()
-      view = @createView()
-      activePane.splitDown(view)
+  activate: ->
+    Project.registerOpener(@customOpener)
+    rootView.command 'terminal:open', ->
+      initialDirectory = project.getPath() ? '~'
+      rootView.open("terminal://#{initialDirectory}")
 
-  createView: () ->
-    new TerminalView
+  deactivate: ->
+    Project.unregisterOpener(@customOpener)
 
-  serialize: ->
-    true
+  customOpener: (uri) ->
+    if match = uri?.match(/^terminal:\/\/(.*)/)
+      initialDirectory = match[1]
+      new TerminalSession({path: initialDirectory})

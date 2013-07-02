@@ -1,32 +1,27 @@
-{View, $$} = require 'space-pen'
 ScrollView = require 'scroll-view'
-TerminalBuffer = require 'terminal/lib/terminal-buffer'
+TerminalBuffer = require './terminal-buffer'
+ColorTable = require './terminal-color-table'
 _ = require 'underscore'
 $ = require 'jquery'
-fs = require 'fs'
-ChildProcess = require 'child-process'
 
 module.exports =
 class TerminalView extends ScrollView
-
-  @content: (params) ->
-    @div class: "terminal", tabindex: -1, =>
-      @div class: "content", outlet: "content", =>
-        @pre
+  @content:->
+    @div class: "terminal", =>
+      @div class: "lines", outlet: "renderedLines"
       @input class: 'hidden-input', outlet: 'hiddenInput'
 
-  initialize: ->
-    super
-    @buffer = new TerminalBuffer(this)
-    @exited = true
-    @readData = false
-    @setTitle()
-    @terminalSize = null
-    @updateTimer = false
-    @updateDelay = 100
-    @cursorLine = 0
+  @color: (n) ->
+    ColorTable[n-16]
 
-    @on 'mousedown', '.title', (e) => @resizeStarted(e)
+  constructor: (@session) ->
+    super
+    @pendingDisplayUpdate = false
+    @pendingUpdates = {}
+    @cursorLine = 0
+    @newCursorLine = 0
+    @session.on 'update', (data) => @queueUpdate(data)
+    @session.on 'clear', => @clearView()
     @on 'click', =>
       @hiddenInput.focus()
     @on 'focus', =>
@@ -42,8 +37,6 @@ class TerminalView extends ScrollView
       if match = keystroke.match /^ctrl-([a-zA-Z])$/
         @input(TerminalBuffer.ctrl(match[1]))
         false
-    @subscribe $(window), 'resize', =>
-      @updateTerminalSize()
 
     @command "terminal:enter", => @input("#{TerminalBuffer.carriageReturn}")
     @command "terminal:delete", => @input(TerminalBuffer.deleteKey)
@@ -63,153 +56,87 @@ class TerminalView extends ScrollView
     @command "terminal:end", => @input(TerminalBuffer.ctrl("e"))
     @command "terminal:reload", => @reload()
 
-  login: ->
-    process = ChildProcess.exec "/bin/bash", interactive: true, cwd: (project.getPath() || "~"), stdout: (data) =>
-      return if process != @process
-      @readData = true if !@readData
-      @output(data)
-    @process = process
-    @process.done () =>
-      return if process != @process
-      @exited = true
-      @write = () -> false
-    @write = @process.write
-    @exited = false
-    @updateTerminalSize()
-
-  logout: ->
-    @write?("", true)
-    @process = null
-
-  reload: ->
-    if !@exited && @process?
-      @logout()
-      @buffer.reset()
-    @login()
-
-  attach: ->
-    @focus()
-    @login()
-
-  show: ->
-    super
-    @login() if @exited
-
-  detach: ->
-    @logout()
-    @remove()
+    @subscribe $(window), 'resize', =>
+      @updateTerminalSize()
 
   input: (data) ->
-    return if @exited
-    @write?(data, false)
+    @session?.trigger 'input', data
 
-  output: (data) ->
-    if data.length > 0
-      @buffer.input(data)
-      @update()
-    if !@terminalSize?
-      @updateTerminalSize()
-      @setTerminalSize()
+  characterColor: (char, color, bgcolor) ->
+    if color >= 16 then char.css(color: "##{TerminalView.color(color)}")
+    else if color >= 0 then char.addClass("color-#{color}")
+    if bgcolor >= 16 then char.css("background-color": "##{TerminalView.color(bgcolor)}")
+    else if bgcolor >= 0 then char.addClass("background-#{bgcolor}")
 
-  lastLine: () ->
-    $(@content.find("pre").last().get(0))
+  renderChar: (lineNumber, c) ->
+    text = c.char
+    if text == "" || text == " " then text = "&nbsp;"
+    char = $("<span>").html(text).addClass("character")
+    if c.cursor
+      char.append($("<span>").addClass("cursor"))
+      @newCursorLine = lineNumber
+    [color, bgcolor] = [c.color, c.backgroundColor]
+    if c.reversed
+      color = 7 if color == -1
+      bgcolor = 7 if bgcolor == -1
+      [color, bgcolor] = [bgcolor, color]
+    @characterColor(char, color, bgcolor)
+    (char.addClass(s) if c[s] == true) for s in ['bold', 'italic', 'underlined']
+    char
 
-  update: (ignoreTimer=false) ->
-    @setTitle(@buffer.title)
-    if @buffer.redrawNeeded
-      window.lines = @buffer.lines
-      @content.empty()
-      @updateLine(line) for line in @buffer.lines
-      @buffer.renderedAll()
+  renderLine: (lineNumber, chars) ->
+    line = $("<pre>").addClass("line").addClass("line-#{lineNumber}")
+    line.append(@renderChar(lineNumber, char)) for char in chars if chars?
+    line
+
+  update: ({lineNumber, chars}) ->
+    rendered = @renderLine(lineNumber, chars)
+    line = @renderedLines.find(".line-#{lineNumber}")
+    if line.size() > 0
+      $(line.get(0)).replaceWith(rendered)
+    else
+      @renderedLines.append(rendered)
+
+  queueUpdate: ({lineNumber, chars}) ->
+    @pendingUpdates[lineNumber] = chars
+    return if @pendingDisplayUpdate
+    @pendingDisplayUpdate = true
+    _.nextTick =>
+      @updateView()
+      @pendingDisplayUpdate = false
+
+  updateView: ->
+    for lineNumber, chars of @pendingUpdates
+      @update({lineNumber: lineNumber, chars: chars})
+    @pendingUpdates = {}
+    if @newCursorLine != @cursorLine
       @scrollToCursor()
-      return
-    @updateTimer = false if ignoreTimer
-    if @updateTimer
-      return
-    else if !ignoreTimer && @updateDelay > 0
-      window.setTimeout (=> @update(true)), @updateDelay
-      @updateTimer = true
-    lines = @buffer.getDirtyLines()
-    if lines.length > 0
-      @updateLine(line) for line in lines
-      @buffer.rendered()
-      if @buffer.cursor.y != @cursorLine
-        @scrollToCursor()
-        @cursorLine = @buffer.cursor.y
+      @cursorLine = @newCursorLine
+    @trigger 'view-updated'
 
   updateTerminalSize: () ->
     tester = $("<pre><span class='character'>a</span></pre>")
-    @content.append(tester)
+    @renderedLines.append(tester)
     charWidth = parseInt(tester.find("span").css("width"))
     lineHeight = parseInt(tester.css("height"))
     tester.remove()
-    windowWidth = parseInt(@content.css("width"))
+    windowWidth = parseInt(@renderedLines.css("width"))
     windowHeight = parseInt(@css("height"))
-    h = Math.floor(windowHeight / lineHeight) - 1
-    w = Math.floor(windowWidth / charWidth) - 1
+    h = Math.floor(windowHeight / lineHeight) + 1
+    w = Math.floor(windowWidth / charWidth)
     return if h <= 0 || w <= 0 || (@terminalSize? && @terminalSize[0] == h && @terminalSize[1] == w)
     @terminalSize = [h, w, charWidth, lineHeight]
-    @buffer.setSize([@terminalSize[0], @terminalSize[1]])
-    @setTerminalSize()
-
-  getTitle: () -> @title
-  setTitle: (text) ->
-    @title = ("#{if text? && text.length then "#{text} - " else ""}Atom Terminal")
-
-  getUri: ->
-    "terminal:foo"
+    @session.trigger 'resize', @terminalSize
 
   scrollToCursor: () ->
-    cursor = @content.find("pre span .cursor").parent().position()
-    if cursor? then @scrollTop(cursor.top)
+    cursor = @renderedLines.find("pre span .cursor").parent().position()
+    topOffset = @renderedLines.offset().top
+    if cursor? then @scrollTop(cursor.top - topOffset)
 
-  setTerminalSize: () ->
-    return if !@terminalSize? || @exited
-    @process?.winsize(@terminalSize[0], @terminalSize[1])
+  clearView: ->
+    @pendingDisplayUpdate = false
+    @pendingUpdates = {}
+    @renderedLines.empty()
 
-  characterColor: (char, color, bgcolor) ->
-    if color >= 16 then char.css(color: "##{TerminalBuffer.color(color)}")
-    else if color >= 0 then char.addClass("color-#{color}")
-    if bgcolor >= 16 then char.css("background-color": "##{TerminalBuffer.color(bgcolor)}")
-    else if bgcolor >= 0 then char.addClass("background-#{bgcolor}")
-
-  insertLine: (line) ->
-    l = @content.find("pre.line-#{line.number}")
-    if !_.contains(@buffer.lines, line)
-      l.remove() if line.number >= @buffer.numLines()
-      return null
-    else if !l.size()
-      l = $("<pre>").addClass("line-#{line.number}").attr("line-number", line.number)
-      if line.number < 1
-        @content.prepend(l)
-      else
-        lines = _.sortBy(@content.find("pre"), ((i)-> i.lineNumber ?= parseInt($(i).attr("line-number"))))
-        lines.reverse()
-        n = 0
-        for li in lines
-          n = li.lineNumber
-          if li.lineNumber < line.number
-            $(li).after(l)
-            return l
-        if line.number < n
-          @content.prepend(l)
-        else
-          @content.append(l)
-    l
-
-  updateLine: (line) ->
-    l = @insertLine(line)
-    return if !l?
-    l.empty()
-    for c in line.characters
-      character = $("<span>#{c.char}</span>").addClass("character")
-      character.append($("<span>").addClass("cursor")) if c.cursor
-      [color, bgcolor] = [c.color, c.backgroundColor]
-      if c.reversed
-        color = 7 if color == -1
-        bgcolor = 7 if bgcolor == -1
-        [color, bgcolor] = [bgcolor, color]
-      @characterColor(character, color, bgcolor)
-      (character.addClass(s) if c[s] == true) for s in ['bold', 'italic', 'underlined']
-      character.css(width: @terminalSize[2]) if c.bold && @terminalSize?
-      l.append character
+  buffer: ->
+    @session.buffer

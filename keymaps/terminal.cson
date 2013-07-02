@@ -1,6 +1,3 @@
-'body':
-  'alt-down': 'terminal:create-split-down'
-
 '.terminal':
   'enter': 'terminal:enter'
   'delete': 'terminal:delete'

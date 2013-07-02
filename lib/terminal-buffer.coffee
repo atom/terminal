@@ -1,5 +1,5 @@
+EventEmitter = require 'event-emitter'
 _ = require 'underscore'
-ColorTable = require 'terminal/lib/terminal-color-table'
 
 module.exports =
 class TerminalBuffer
@@ -10,20 +10,19 @@ class TerminalBuffer
   @bell: String.fromCharCode(7)
   @escape: String.fromCharCode(27)
   @tab: String.fromCharCode(9)
-  @color: (n) ->
-    ColorTable[n-16]
   @ctrl: (c) ->
     base = "a".charCodeAt(0)
     base = "A".charCodeAt(0) if c.charCodeAt(0) < base
     String.fromCharCode(c.charCodeAt(0) - base + 1)
   @escapeSequence: (sequence,start="[") -> "#{@escape}#{start}#{sequence}"
-  constructor: (@view) ->
+
+  constructor: ->
     @size = [24, 80]
+    @on 'data', (data) => @input(data)
     @reset()
+
   reset: ->
     @lines = []
-    @dirtyLines = []
-    @decsc = [0,0]
     @inEscapeSequence = false
     @escapeSequenceStarted = false
     @ignoreEscapeSequence = false
@@ -46,35 +45,42 @@ class TerminalBuffer
     @tabstops = []
     @cursor = new TerminalCursor(this)
     @addLine(false)
-    @redrawNeeded = true
     @title = ""
     @tabstops = []
+
   setSize: (size) ->
     @size = size
-  resetSGR: () ->
+
+  resetSGR: ->
     @color = 0
     @backgroundColor = -1
     @bold = false
     @italic = false
     @underlined = false
     @reversed = false
+
   inMode: (name) ->
     @modes[name] != false
-  length: () ->
+
+  length: ->
     l = 0
     l += line.length() for line in @lines
     l
+
   screenToLine: (screenCoords) ->
     if @scrollingRegion?
       return [screenCoords[0] + (@scrollingRegion.top - 1), screenCoords[1]]
     screenCoords
+
   setScrollingRegion: (coords) ->
     start = @numLines() - 1
     if @scrollingRegion? then start = @scrollingRegion.start
     @scrollingRegion = new TerminalScrollingRegion(coords[0], coords[1], start)
+
   moveCursorTo: (coords) ->
     @cursor.moveTo(@screenToLine(coords))
     @updatedCursor(true)
+
   updatedCursor: (sgrReset=false) ->
     @resetSGR() if sgrReset
     n = @numLines()
@@ -84,37 +90,53 @@ class TerminalBuffer
     if line? && @cursor.character() >= line.length()
       line.appendCharacter(" ") for x in [line.length()..(@cursor.character())]
     @cursor.moved()
-  updateLineNumbers: () ->
+
+  updateLineNumbers: ->
     (line.number = parseInt(n); line.setDirty()) for n,line of @lines
-  lastLine: () ->
+
+  lineChanged: (line) ->
+    @trigger 'update',
+      lineNumber: line.number
+      chars: line.characters
+
+  lastLine: ->
     _.last(@lines)
-  cursorLine: () ->
+
+  cursorLine: ->
     l = @getLine(@cursor.line())
     l
+
   setLine: (text, n=-1) ->
     n = @numLines() - 1 if n < 0
     @lines[n].setText(text)
+
   getLine: (n) ->
     if n >= 0 && n < @numLines() then @lines[n]
+
   emptyLine: (n) ->
     new TerminalBufferLine(this, n)
+
   addLineAt: (n) ->
     line = @emptyLine(0)
     @lines.splice(n, 0, line)
     line
+
   addLine: (moveCursor=true) ->
     @lastLine()?.clearCursor()
     line = @emptyLine(@numLines())
     @lines.push(line)
     @cursor.moveTo([@lastLine().number + 1, 1]) if moveCursor
     line
+
   removeLine: (n, num=1) ->
     @lines[n].setDirty()
     @lines.splice(n, num)
     @updateLineNumbers()
-  numLines: () ->
+
+  numLines: ->
     @lines.length
-  scrollUp: () ->
+
+  scrollUp: ->
     topLine = 0
     bottomLine = @numLines() - 1
     if @scrollingRegion?
@@ -124,7 +146,8 @@ class TerminalBuffer
     @lines.splice(topLine, 1)
     @addLineAt(bottomLine)
     @updateLineNumbers()
-  scrollDown: () ->
+
+  scrollDown: ->
     topLine = 0
     bottomLine = @numLines() - 1
     if @scrollingRegion?
@@ -135,6 +158,7 @@ class TerminalBuffer
       @lines.splice(bottomLine, 1) if @scrollingRegion?
     @addLineAt(topLine)
     @updateLineNumbers()
+
   eraseData: (op) ->
     numLines = @numLines() - 1
     start = 0
@@ -149,52 +173,48 @@ class TerminalBuffer
       @getLine(n)?.erase(0, 2) for n in [start..numLines]
     else
       @getLine(n)?.erase(0, 2) for n in [cursorLine+1..numLines] if numLines > cursorLine
+
   eraseInLine: (op) ->
     @cursorLine().erase(@cursor.character(), op)
     @cursorLine().lastCharacter().cursor = true
-  text: () ->
+
+  text: ->
     _.reduce(@lines, (memo, line) ->
       return memo + line.text() + "\n"
     , "")
-  enableAlternateBuffer: () ->
+
+  enableAlternateBuffer: ->
     [@altBuffer, @lines] = [@lines, []]
+    @trigger 'clear'
     @addLine()
     @scrollingRegion = null
-    @redrawNeeded = true
-    @dirtyLines = []
-  disableAlternateBuffer: () ->
+
+  disableAlternateBuffer: ->
     return if !@altBuffer?
     [@lines, @altBuffer] = [@altBuffer, null]
     @scrollingRegion = null
-    @redrawNeeded = true
-    @dirtyLines = []
-  addDirtyLine: (line) ->
-    @dirtyLines.push(line) if _.contains(@lines, line) && !_.contains(@dirtyLines, line)
-  getDirtyLines: () ->
-    _.uniq(@dirtyLines)
-  rendered: () ->
-    line.rendered() for line in @dirtyLines
-    @dirtyLines = []
-  renderedAll: () ->
-    line.rendered() for line in @lines
-    @dirtyLines = []
-    @redrawNeeded = false
-  backspace: () ->
+    line.setDirty() for line in @lines
+    @trigger 'clear'
+
+  backspace: ->
     @cursor.x -= 1
     @cursor.x = 1 if @cursor.x < 1
     @updatedCursor()
+
   moveCursorX: (direction=1) ->
     @cursor.x += direction
     len = @cursorLine().length()
     @cursor.x = len if @cursor.x > len
     @cursor.x = 1 if @cursor.x < 1
     @updatedCursor()
+
   moveCursorY: (direction=1) ->
     @cursor.y += direction
     len = @numLines()
     @cursor.y = len if @cursor.y > len
     @cursor.y = 1 if @cursor.y < 1
     @updatedCursor(true)
+
   tab: (direction=1) ->
     found = false
     if @tabstops.length > 0
@@ -219,6 +239,7 @@ class TerminalBuffer
       @cursor.x -= 8 - ((@cursor.x - 1) % 8) for n in [1..-direction]
     @cursor.x = 1 if @cursor.x < 1
     @updatedCursor()
+
   newline: (direction=1) ->
     @resetSGR()
     @cursor.y += direction
@@ -232,6 +253,7 @@ class TerminalBuffer
     if @cursor.y > len
       @addLine(!scrollingRegion?) for n in [1..@cursor.y-len]
     @updatedCursor(true)
+
   insertCharacter: (c) ->
     if @autowrap
       if @cursor.x > @size[1]
@@ -244,20 +266,22 @@ class TerminalBuffer
       @cursorLine().appendAt(c, @cursor.character())
     @cursor.x += 1
     @updatedCursor()
+
   input: (text) ->
     @inputCharacter(c) for c in text
+
   inputCharacter: (c) ->
     # window.console.log [c, c.charCodeAt(0), @numLines()]
     if @inEscapeSequence
       return @inputEscapeSequence(c)
-    @inputChars?= []
-    @inputChars.push(c)
+    # @inputChars?= []
+    # @inputChars.push(c)
     switch c.charCodeAt(0)
       when 0 then # Ignore NUL
       when 3 then # Ignore ETX
       when 4 then # Ignore EOT
       when 5 # ENQ
-        @view.input(String.fromCharCode(6))
+        @trigger 'output', String.fromCharCode(6)
       when 7 then # Ignore BEL
       when 8 then @backspace()
       when 9 # TAB
@@ -274,6 +298,7 @@ class TerminalBuffer
         @escape()
       else # Input
         @insertCharacter(c)
+
   inputEscapeSequence: (c) ->
     code = c.charCodeAt(0)
     @clear = false
@@ -342,14 +367,15 @@ class TerminalBuffer
       @escapeSequenceStarted = false
       @endWithBell = false
       @escapeSequence = ""
+
   evaluateEscapeSequence: (type, sequence) ->
-    if @inputChars.length > 0
-      window.console.log _.map @inputChars, (c) ->
-        i = c.charCodeAt(0)
-        if i < 32 then i
-        else c
-    @inputChars = []
-    window.console.log "Terminal: Escape #{sequence} #{type}"
+    # if @inputChars.length > 0
+    #  window.console.log _.map @inputChars, (c) ->
+    #    i = c.charCodeAt(0)
+    #    if i < 32 then i
+    #    else c
+    # @inputChars = []
+    # window.console.log "Terminal: Escape #{sequence} #{type}"
     seq = sequence.split(";")
     if @endWithBell
       @title = seq[1]
@@ -412,7 +438,7 @@ class TerminalBuffer
         c = @cursorLine().getCharacter(@cursor.character() - 1)
         @insertCharacter(c.char) for n in [1..num] if c?
       when "c" # DA - Send device attribute
-        @view.input(TerminalBuffer.escapeSequence("?6c"))
+        @trigger 'output', TerminalBuffer.escapeSequence("?6c")
       when "d" # VPA - Move cursor to line (absolute)
         @moveCursorTo([num, @cursor.x])
       when "e" # VPR - Move cursor to line (relative)
@@ -570,11 +596,11 @@ class TerminalBuffer
       when "n" # DSR - Device status report
         num = parseInt(seq[0].replace(/^\?/, ''))
         if num == 5 # Are you ok?
-          @view.input(TerminalBuffer.escapeSequence("0n"))
+          @trigger 'output', TerminalBuffer.escapeSequence("0n")
         else if num == 6 # Cursor position
-          @view.input(TerminalBuffer.escapeSequence("#{@cursor.y};#{@cursor.x}R"))
+          @trigger 'output', TerminalBuffer.escapeSequence("#{@cursor.y};#{@cursor.x}R")
         else if num == 15 # Printer status
-          @view.input(TerminalBuffer.escapeSequence("1n"))
+          @trigger 'output', TerminalBuffer.escapeSequence("1n")
       when "p" then # Ignore pointer mode (>), DECSTR - soft reset (!), DECRQM - ansi mode ($)
       when "q" then # DECLL - Ignore load LEDs, DECSCUSR -set cursor style (sp)
       when "r" # DECSTBM - Set scrollable region
@@ -588,10 +614,14 @@ class TerminalBuffer
       else
         window.console.log "Terminal: Unhandled escape sequence #{sequence}#{type}"
     @lastLine().lastCharacter()?.reset(this)
+
   escape: ->
     @inEscapeSequence = true
     @escapeSequence = ""
     @escapeSequenceStarted = false
+
+_.extend TerminalBuffer.prototype, EventEmitter
+
 
 class TerminalBufferLine
   constructor: (@buffer, @number) ->
@@ -599,19 +629,24 @@ class TerminalBufferLine
     @characters = [@emptyChar()]
     if text?
       @setText(text)
-  emptyChar: () ->
+
+  emptyChar: ->
     new TerminalCharacter(this, @buffer)
+
   append: (text) ->
     @appendCharacter(c) for c in text
     @setDirty()
-  text: () ->
+
+  text: ->
     _.reduce(@characters, (memo, character) ->
       return memo + character.char
     , "")
+
   appendCharacter: (c) ->
     @lastCharacter().char = c
     char = @emptyChar()
     @characters.push(char)
+
   insertAt: (c, x) ->
     char = @emptyChar()
     char.char = c
@@ -619,17 +654,22 @@ class TerminalBufferLine
     if x == @length() - 1
       @characters.push(@emptyChar())
     @setDirty()
+
   appendAt: (c, x) ->
     char = @emptyChar()
     char.char = c
     @characters = _.flatten([@characters.slice(0, x), char, @characters.slice(x, @length())])
     @setDirty()
-  lastCharacter: () ->
+
+  lastCharacter: ->
     _.last(@characters)
-  lastVisibleCharacter: () ->
+
+  lastVisibleCharacter: ->
     _.first(_.last(@characters, 2))
+
   getCharacter: (n) ->
     @characters[n]
+
   erase: (start, op) ->
     switch op
       when 1 # Clear to beginning of line
@@ -642,27 +682,31 @@ class TerminalBufferLine
         @characters = _.compact(@characters)
         @characters.push(@emptyChar())
     @setDirty()
+
   deleteCharacters: (start,num) ->
     @characters.splice(start, num)
     @setDirty()
+
   eraseCharacters: (start, num) ->
     @characters[n].resetToBlank() for n in [start..(start+num-1)]
     @setDirty()
-  length: () ->
+
+  length: ->
     @characters.length
+
   setText: (text) ->
     @characters = []
     @append(text)
     @setDirty()
-  setDirty: () ->
-    @dirty = true
-    @buffer.addDirtyLine(this)
-  rendered: () ->
-    @dirty = false
-  clearCursor: () ->
+
+  setDirty: ->
+    @buffer.lineChanged(this)
+
+  clearCursor: ->
     c.cursor = false for c in @characters
     @setDirty()
-  backspace: () ->
+
+  backspace: ->
     c = @lastVisibleCharacter()
     c.cursor = true
     c.char = ''
@@ -672,6 +716,7 @@ class TerminalCharacter
   constructor: (@line, buffer) ->
     @char = ""
     @reset(buffer)
+
   reset: (buffer) ->
     if buffer?
       @color = buffer.color
@@ -682,32 +727,37 @@ class TerminalCharacter
       @reversed = buffer.reversed
     else
       @resetToBlank()
-  resetToBlank: () ->
-      @char = ""
-      @color = 0
-      @backgroundColor = 0
-      @bold = false
-      @italic = false
-      @underlined = false
-      @cursor = false
-      @reversed = false
+
+  resetToBlank: ->
+    @char = ""
+    @color = 0
+    @backgroundColor = 0
+    @bold = false
+    @italic = false
+    @underlined = false
+    @cursor = false
+    @reversed = false
 
 class TerminalCursor
   constructor: (@buffer) ->
     @moveTo([1,1])
     @decsc = [1,1]
     @show = true
-  store: () ->
+
+  store: ->
     @decsc = [@x, @y]
-  restore: () ->
+
+  restore: ->
     [@x, @y] = @decsc
+
   moveTo: (coords) ->
     @y = coords[0]
     @y = 1 if @y < 1
     @x = coords[1]
     @x = 1 if @x < 1
     @moved()
-  moved: () ->
+
+  moved: ->
     lastLine = @curLine
     @curLine = @buffer.getLine(@line())
     if lastLine && @curLine != lastLine
@@ -715,9 +765,11 @@ class TerminalCursor
     if @curLine && char = @curLine.getCharacter(@character())
       @curLine.clearCursor()
       char.cursor = true if @show
-  line: () ->
+
+  line: ->
     @y - 1
-  character: () ->
+
+  character: ->
     @x - 1
 
 class TerminalScrollingRegion
