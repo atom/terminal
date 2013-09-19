@@ -1,5 +1,4 @@
-EventEmitter = require 'event-emitter'
-_ = require 'underscore'
+{_, EventEmitter} = require 'atom'
 
 module.exports =
 class TerminalBuffer

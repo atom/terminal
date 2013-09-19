@@ -1,8 +1,6 @@
-ScrollView = require 'scroll-view'
+{_, $, ScrollView} = require 'atom'
 TerminalBuffer = require './terminal-buffer'
 ColorTable = require './terminal-color-table'
-_ = require 'underscore'
-$ = require 'jquery'
 
 module.exports =
 class TerminalView extends ScrollView

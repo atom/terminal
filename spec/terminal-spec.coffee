@@ -1,5 +1,5 @@
 TerminalSession = require '../lib/terminal-session'
-RootView = require 'root-view'
+{RootView} = require 'atom'
 
 describe "Terminal", ->
   beforeEach ->

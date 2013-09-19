@@ -1,5 +1,3 @@
-Project = require 'project'
-
 TerminalSession = null
 createTerminalSession = (state) ->
   TerminalSession ?= require './terminal-session'
@@ -12,13 +10,13 @@ registerDeserializer
 
 module.exports =
   activate: ->
-    Project.registerOpener(@customOpener)
+    project.registerOpener(@customOpener)
     rootView.command 'terminal:open', ->
       initialDirectory = project.getPath() ? '~'
       rootView.open("terminal://#{initialDirectory}")
 
   deactivate: ->
-    Project.unregisterOpener(@customOpener)
+    project.unregisterOpener(@customOpener)
 
   customOpener: (uri) ->
     if match = uri?.match(/^terminal:\/\/(.*)/)

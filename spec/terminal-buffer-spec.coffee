@@ -1,5 +1,5 @@
 TerminalBuffer = require '../lib/terminal-buffer'
-RootView = require 'root-view'
+{RootView} = require 'atom'
 
 describe "Terminal Buffer", ->
   [buffer,events,output] = []

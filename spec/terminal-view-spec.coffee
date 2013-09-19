@@ -1,8 +1,6 @@
 TerminalView = require '../lib/terminal-view'
 TerminalBuffer = require '../lib/terminal-buffer'
-RootView = require 'root-view'
-EventEmitter = require 'event-emitter'
-_ = require 'underscore'
+{_, EventEmitter, RootView} = require 'atom'
 
 describe "Terminal view", ->
   [view, session] = []
