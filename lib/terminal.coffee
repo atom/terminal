@@ -17,6 +17,7 @@ Terminal =
       atom.workspaceView.open("terminal://#{initialDirectory}")
 
     atom.workspaceView.command 'terminal:run-command', => @toggleCommandPrompt()
+    atom.workspaceView.command 'terminal:run-last-command', => @runLastCommand()
 
   deactivate: ->
     atom.project.unregisterOpener(@customOpener)
@@ -49,6 +50,7 @@ Terminal =
 
   runCommand: (command) ->
     return unless command
+    @lastCommand = command
     session = @activeSessions[0]
     return unless session
 
@@ -62,3 +64,9 @@ Terminal =
         @runCommand(command)
       else
         throw(error)
+
+  runLastCommand: ->
+    if @lastCommand
+      @runCommand @lastCommand
+    else
+      @toggleCommandPrompt()
