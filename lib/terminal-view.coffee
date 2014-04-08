@@ -113,7 +113,7 @@ class TerminalView extends ScrollView
     @trigger 'view-updated'
 
   updateTerminalSize: () ->
-    tester = $("<pre><span class='character'>a</span></pre>")
+    tester = $("<pre class='line'><span class='character'>a</span></pre>")
     @renderedLines.append(tester)
     charWidth = parseInt(tester.find("span").css("width"))
     lineHeight = parseInt(tester.css("height"))
