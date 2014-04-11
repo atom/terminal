@@ -31,7 +31,9 @@ class TerminalSession
 
   forkPtyProcess: ->
     processPath = require.resolve('./terminal-process')
-    Task.once(processPath, fs.absolute(@path))
+    env = atom.config.get('terminal.env') ? {}
+    env[key] = val for key, val of process.env
+    Task.once(processPath, fs.absolute(@path), env)
 
   serialize: ->
     deserializer: 'TerminalSession'

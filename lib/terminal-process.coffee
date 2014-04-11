@@ -1,6 +1,6 @@
 pty = require 'pty.js'
 
-module.exports = (ptyCwd) ->
+module.exports = (ptyCwd, ptyEnv) ->
   callback = @async()
   if process.platform is 'win32'
     shell = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
@@ -18,7 +18,7 @@ module.exports = (ptyCwd) ->
     cols: cols
     rows: rows
     cwd: ptyCwd
-    env: process.env
+    env: ptyEnv
 
   ptyProcess.on 'data', (data) -> emit('terminal:data', data)
   ptyProcess.on 'exit', ->
