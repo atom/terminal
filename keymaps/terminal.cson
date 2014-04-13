@@ -16,6 +16,7 @@
 
 '.platform-darwin .terminal':
   'cmd-v': 'terminal:paste'
+  'cmd-c': 'terminal:copy'
   'cmd-alt-r': 'terminal:reload'
 
 '.platform-win32 .terminal':

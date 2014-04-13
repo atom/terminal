@@ -20,18 +20,18 @@ class TerminalView extends ScrollView
     @newCursorLine = 0
     @session.on 'update', (data) => @queueUpdate(data)
     @session.on 'clear', => @clearView()
-    @on 'click', =>
-      @hiddenInput.focus()
     @on 'focus', =>
-      @hiddenInput.focus()
       @updateTerminalSize()
-      @scrollToCursor()
       false
     @on 'textInput', (e) =>
       @input(e.originalEvent.data)
       false
     @on 'keydown', (e) =>
       keystroke = atom.keymap.keystrokeStringForEvent(e)
+      # Don't change focus for copy keystrokes, because it looses selection
+      if not @isCopyKeystroke(keystroke)
+        @hiddenInput.focus()
+        @scrollToCursor()
       if match = keystroke.match /^ctrl-([a-zA-Z])$/
         @input(TerminalBuffer.ctrl(match[1]))
         false
@@ -45,7 +45,8 @@ class TerminalView extends ScrollView
       do (letter) =>
         key = TerminalBuffer.ctrl(letter)
         @command "terminal:ctrl-#{letter}", => @input(key)
-    @command "terminal:paste", => @input(atom.pasteboard.read())
+    @command "terminal:paste", => @input(atom.clipboard.read())
+    @command "terminal:copy", => @copyToClipboard()
     @command "terminal:left", => @input(TerminalBuffer.escapeSequence("D"))
     @command "terminal:right", => @input(TerminalBuffer.escapeSequence("C"))
     @command "terminal:up", => @input(TerminalBuffer.escapeSequence("A"))
@@ -56,6 +57,13 @@ class TerminalView extends ScrollView
 
     @subscribe $(window), 'resize', =>
       @updateTerminalSize()
+
+  copyToClipboard : () ->
+    atom.clipboard.write(window.getSelection().toString())
+
+  isCopyKeystroke : (keystroke) ->
+    keystroke == "cmd" or keystroke == "cmd-c" or
+      keystroke == "ctrl" or keystroke == "ctrl-c"
 
   input: (data) ->
     @session?.emit 'input', data
