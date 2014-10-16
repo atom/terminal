@@ -1,7 +1,25 @@
+@import "ui-variables";
+@import "syntax-variables";
+
+@-moz-keyframes blinker {
+  to { visibility: hidden; }
+}
+
+@-webkit-keyframes blinker {
+  to { visibility: hidden; }
+}
+
+@keyframes blinker {
+  to { visibility: hidden; }
+}
+
 .terminal {
-  background-color: #fff;
-  padding: 5px;
+  background-color: @syntax-background-color;
+  color: @syntax-text-color;
+  padding: @component-padding;
   overflow-y: scroll;
+  font-family: @font-family;
+  font-size: @font-size;
 
   pre.line {
     border: none;
@@ -32,10 +50,14 @@
     top: 0; left: 0;
     bottom: 0; right: 0;
     width: 0.8em;
-    height: 1.4em;
-    background-color: #000;
+    height: 1.3em;
+    background-color: @syntax-cursor-color;
     opacity: 0.35;
     z-index: 2;
+
+    -webkit-animation: blinker .8s steps(2, start) infinite;
+    -moz-animation: blinker .8s steps(2, start) infinite;
+    animation: blinker .8s steps(2, start) infinite;
   }
 
   input.hidden-input {
@@ -61,53 +83,53 @@
 
 
   .color-0 {
-    color: #000;
+    color: @syntax-text-color;
   }
   .color-1 {
-    color: rgb(194, 54, 33);
+    color: #cc6666;
   }
   .color-2 {
-    color: rgb(37, 188, 36);
+    color: #f0c674;
   }
   .color-3 {
-    color: rgb(173, 173, 39);
+    color: #de935f;
   }
   .color-4 {
-    color: rgb(73, 46, 225);
+    color: #81a2be;
   }
   .color-5 {
-    color: rgb(211, 56, 211);
+    color: #b294bb;
   }
   .color-6 {
-    color: rgb(51, 187, 200);
+    color: #8abeb7;
   }
   .color-7 {
-    color: rgb(203, 204, 205);
+    color: #b5bd68;
   }
 
   .background-0 {
-    background-color: #000;
+    background-color: @syntax-background-color;
   }
   .background-1 {
-    background-color: rgb(194, 54, 33);
+    color: #cc6666;
   }
   .background-2 {
-    background-color: rgb(37, 188, 36);
+    color: #f0c674;
   }
   .background-3 {
-    background-color: rgb(173, 173, 39);
+    color: #de935f;
   }
   .background-4 {
-    background-color: rgb(73, 46, 225);
+    color: #81a2be;
   }
   .background-5 {
-    background-color: rgb(211, 56, 211);
+    color: #b294bb;
   }
   .background-6 {
-    background-color: rgb(51, 187, 200);
+    color: #8abeb7;
   }
   .background-7 {
-    background-color: rgb(203, 204, 205);
+    color: #b5bd68;
   }
 
 }
