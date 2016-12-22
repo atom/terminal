@@ -1,5 +1,7 @@
 'body':
   'ctrl-`': 'terminal:open'
+  'ctrl-r': 'terminal:run-command'
+  'ctrl-shift-r': 'terminal:run-last-command'
 
 '.terminal':
   'enter': 'terminal:enter'
